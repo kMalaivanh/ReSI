@@ -1,0 +1,92 @@
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(scales)  # For number formatting
+library(openxlsx)  # For writing to Excel
+
+# Set the base folder where you want to save the plots
+base_folder <- "U:\\Work\\Scatterplots"
+
+# Read the Excel file and treat "#N/A" as missing values
+my_data <- read_excel("U:\\Work\\aca.xlsx",
+                      col_names = TRUE, na = c("", "#N/A"))
+
+# Convert Rank to numeric in case it was read as character or factor
+my_data$Rank <- as.numeric(as.character(my_data$Rank))
+
+# Create subsets for plotting
+data_all <- my_data %>% filter(Rank >= 1 & Rank <= 97)
+data_1_18 <- my_data %>% filter(Rank >= 1 & Rank <= 18)
+data_1_10 <- my_data %>% filter(Rank >= 1 & Rank <= 10)
+data_1_5 <- my_data %>% filter(Rank <= 5)  # Only Rank 1–5
+data_1_18_public  <- data_1_18 %>% filter(`Institution Type` == "Public")
+data_1_18_private <- data_1_18 %>% filter(`Institution Type` == "Private")
+
+# Specify the variable to plot
+variable_to_plot <- "Dollars Per Grant"
+
+# Create a dataframe to store results
+results <- data.frame(
+  Variable = character(),
+  DataSet = character(),
+  Regression_Equation = character(),
+  R_Squared = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Function to generate plots, regression equations and store the results
+plot_linear <- function(data, yvar, data_name, base_folder) {
+  # Fit linear model
+  lm_model <- lm(as.formula(sprintf("`%s` ~ Rank", yvar)), data = data)
+  eq_label <- sprintf("y = %.2f + %.2f*x", coef(lm_model)[1], coef(lm_model)[2])
+  r_squared <- summary(lm_model)$r.squared
+  
+  # Store the results in the dataframe
+  results <<- rbind(results, data.frame(
+    Variable = yvar,
+    DataSet = data_name,
+    Regression_Equation = eq_label,
+    R_Squared = r_squared
+  ))
+  
+  # Generate plot with no axis titles, no legend, and formatted axes
+  p <- ggplot(data, aes(x = Rank, y = .data[[yvar]])) +
+    geom_point(aes(color = ifelse(Institution == "Purdue University", "Purdue University", "Other")),
+               size = 2, alpha = 0.7) +
+    geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 1) +
+    labs(x = "", y = "") +
+    theme_minimal() +
+    theme(legend.position = "none", plot.title = element_blank()) +
+    scale_color_manual(values = c("Purdue University" = "darkgoldenrod", "Other" = "black")) +
+    scale_x_continuous(labels = label_number(accuracy = 1, big.mark = ",")) +
+    scale_y_continuous(labels = label_number(accuracy = 1, big.mark = ","))
+  
+  # Create a folder based on the variable name inside base_folder
+  var_folder <- tolower(gsub(" ", "_", yvar))
+  folder_path <- file.path(base_folder, var_folder)
+  if (!dir.exists(folder_path)) {
+    dir.create(folder_path, recursive = TRUE)
+  }
+  
+  # Construct the filename using the variable name and data subset name
+  filename <- file.path(folder_path, paste0(tolower(gsub(" ", "_", yvar)), "_", data_name, ".png"))
+  
+  # Save the plot as a PNG file
+  ggsave(filename, plot = p, width = 6, height = 4, dpi = 300)
+  
+  print(p)  # Display the plot
+}
+
+# Generate plots and save them in the folder under base_folder
+plot_linear(data_all, variable_to_plot, "data_all", base_folder)
+plot_linear(data_1_18, variable_to_plot, "data_1_18", base_folder)
+plot_linear(data_1_18_public, variable_to_plot, "data_1_18_public", base_folder)
+plot_linear(data_1_18_private, variable_to_plot, "data_1_18_private", base_folder)
+plot_linear(data_1_10, variable_to_plot, "data_1_10", base_folder)
+plot_linear(data_1_5, variable_to_plot, "data_1_5", base_folder)
+
+# Write the results to an Excel file
+write.xlsx(results, "U:\\Work\\regression_results.xlsx")
+
+# Optionally print the regression equations for reference
+cat(paste(results$Regression_Equation, collapse = ", "), "\n")
