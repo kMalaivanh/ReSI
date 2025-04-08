@@ -1,0 +1,47 @@
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+# Load the data
+my_data1 <- read_excel("U:\\Work\\awardsSociety.xlsx", col_names = TRUE, na = c("", "#N/A"))
+
+my_data1$Rank <- as.numeric(as.character(my_data1$Rank))
+
+# Filter to only IISE society awards
+iise_data <- my_data1 %>%
+  filter(Society == "IISE", !is.na(Rank), `Award Type` %in% c("Work", "Career"))
+
+# Define rank groups
+rank_groups <- list(
+  all = list(filter = function(df) df, title = "All Ranks"),
+  top_18 = list(filter = function(df) df %>% filter(Rank <= 18), title = "Ranks 1–18"),
+  top_10 = list(filter = function(df) df %>% filter(Rank <= 10), title = "Ranks 1–10"),
+  top_5 = list(filter = function(df) df %>% filter(Rank <= 5), title = "Ranks 1–5")
+)
+
+# Plot for each group
+for (group in names(rank_groups)) {
+  
+  # Apply rank filter
+  data_grouped <- rank_groups[[group]]$filter(iise_data)
+  
+  # Aggregate: count awards per rank per award type
+  summary_data <- data_grouped %>%
+    group_by(Rank, `Award Type`) %>%
+    summarise(Award_Count = n(), .groups = "drop")
+  
+  # Plot
+  p <- ggplot(summary_data, aes(x = Rank, y = Award_Count, color = `Award Type`)) +
+    geom_point(size = 3, alpha = 0.8) +
+    geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
+    scale_color_manual(values = c("Work" = "blue", "Career" = "black")) +
+    labs(
+      title = paste("IISE Awards by Rank -", rank_groups[[group]]$title),
+      x = "Institution Rank",
+      y = "Count of Awards",
+      color = "Award Type"
+    ) +
+    theme_minimal()
+  
+  print(p)
